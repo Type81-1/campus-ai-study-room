@@ -1,0 +1,27 @@
+# 通用忽略规则
+.idea/
+.vscode/
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# 环境变量与本地配置
+.env
+.env.*
+!.env.example
+
+# 依赖和构建产物
+node_modules/
+dist/
+build/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 本地数据库与临时数据
+*.db
+*.sqlite
+coverage/
