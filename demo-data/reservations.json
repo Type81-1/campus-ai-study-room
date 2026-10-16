@@ -1,0 +1,6 @@
+{
+  "说明": "预约接口演示数据模板。日期请在验收当天改为当天或未来日期。",
+  "reservations": [
+    {"user_id": 1, "seat_id": 1, "reservation_date": "YYYY-MM-DD", "start_time": "09:00", "end_time": "11:00", "status": "booked"}
+  ]
+}

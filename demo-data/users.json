@@ -1,0 +1,8 @@
+{
+  "说明": "脱敏课程演示账号；仅用于本地验收，不要使用真实密码",
+  "users": [
+    {"username": "student001", "password": "123456", "name": "演示学生", "role": "student", "preferences": {"window": true, "power": true}},
+    {"username": "student002", "password": "123456", "name": "测试同学", "role": "student", "preferences": {"window": false, "power": true}},
+    {"username": "admin", "password": "admin123", "name": "系统管理员", "role": "admin", "preferences": {}}
+  ]
+}
