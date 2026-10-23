@@ -1,0 +1,11 @@
+{
+  "name": "study-room-ui-smoke",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node ui-smoke.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
+  }
+}

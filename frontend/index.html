@@ -8,6 +8,8 @@
 </head>
 <body>
   <div id="toast" class="toast"></div>
+
+  <!-- 登录 -->
   <section id="loginView" class="login-view">
     <div class="login-card">
       <div class="brand-mark">S</div>
@@ -16,38 +18,138 @@
       <p class="muted">预约座位，专注学习，让每个座位都被合理使用。</p>
       <form id="loginForm">
         <label>账号<input id="username" value="student001" autocomplete="username" required></label>
-        <label>密码<input id="password" type="password" value="123456" autocomplete="current-password" required></label>
+        <label>密码<input id="password" type="password" placeholder="请输入登录密码" autocomplete="current-password" required></label>
         <button class="primary full" type="submit">进入自习室</button>
       </form>
       <div class="demo-hint">演示账号：student001 / 123456　管理员：admin / admin123</div>
     </div>
   </section>
 
+  <!-- 主体 -->
   <section id="appView" class="app-shell hidden">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark small">S</span><div><strong>Study Room</strong><small>校园智能自习室</small></div></div>
       <nav>
-        <button class="nav-item active" data-page="book"><span>⌂</span>预约座位</button>
+        <button class="nav-item active" data-page="booking"><span>⌂</span>预约座位</button>
         <button class="nav-item" data-page="mine"><span>◷</span>我的预约</button>
         <button class="nav-item" data-page="recommend"><span>✦</span>智能推荐</button>
         <button class="nav-item admin-only hidden" data-page="admin"><span>▥</span>管理看板</button>
       </nav>
-      <div class="sidebar-bottom"><div id="userBadge"></div><button id="logoutBtn" class="logout">退出登录</button></div>
-    </aside>
-    <main class="main-content">
-      <header class="topbar"><div><p class="eyebrow">GOOD STUDY, GOOD DAY</p><h2 id="pageTitle">预约座位</h2></div><div class="date-pill" id="todayLabel"></div></header>
-      <div id="bookPage" class="page">
-        <div class="hero"><div><p class="eyebrow light">SMART BOOKING</p><h3>找到今天最适合你的座位</h3><p>选择日期和时段，系统会实时拦截冲突预约。</p></div><div class="hero-stat"><strong id="availableCount">—</strong><span>当前可预约座位</span></div></div>
-        <div class="filter-card"><label>日期<input id="bookingDate" type="date"></label><label>开始时间<select id="startTime"></select></label><label>结束时间<select id="endTime"></select></label><button id="refreshSeats" class="primary">查询座位</button></div>
-        <div class="section-head"><div><h3>座位状态</h3><p class="muted">点击可预约座位查看详情并预约</p></div><div class="legend"><span><i class="dot available"></i>可预约</span><span><i class="dot busy"></i>已占用</span></div></div>
-        <div id="seatGrid" class="seat-grid"></div>
+      <div class="sidebar-bottom">
+        <div id="userBadge"></div>
+        <button id="logoutBtn" class="logout">退出登录</button>
       </div>
-      <div id="minePage" class="page hidden"><div class="section-head"><div><h3>我的预约</h3><p class="muted">查看预约、签到和历史记录</p></div><button class="secondary" id="mineRefresh">刷新</button></div><div id="reservationList" class="reservation-list"></div></div>
-      <div id="recommendPage" class="page hidden"><div class="hero compact"><div><p class="eyebrow light">AI RECOMMENDATION</p><h3>按你的偏好推荐空闲座位</h3><p>当前演示采用可解释的规则评分：靠窗、电源和安静区会获得额外分数。</p></div></div><div class="filter-card"><label>日期<input id="recommendDate" type="date"></label><label>开始时间<select id="recommendStart"></select></label><label>结束时间<select id="recommendEnd"></select></label><button id="loadRecommendations" class="primary">生成推荐</button></div><div id="recommendList" class="recommend-list"></div></div>
-      <div id="adminPage" class="page hidden"><div class="section-head"><div><h3>管理看板</h3><p class="muted">预约运营概览与违规占座预警</p></div><button class="secondary" id="adminRefresh">刷新</button></div><div id="statsCards" class="stats-grid"></div><div class="admin-columns"><div class="panel"><h4>近 7 日预约趋势</h4><div id="trendBars" class="trend-bars"></div></div><div class="panel"><h4>热门座位</h4><div id="popularSeats"></div></div></div><div class="panel"><h4>违规预警记录</h4><div id="violationList"></div></div></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div><p class="eyebrow">GOOD STUDY, GOOD DAY</p><h2 id="pageTitle">预约座位</h2></div>
+        <div class="date-pill" id="todayLabel"></div>
+      </header>
+
+      <!-- 预约座位 -->
+      <section id="page-booking" class="page">
+        <div class="hero">
+          <div>
+            <p class="eyebrow light">SMART BOOKING</p>
+            <h3>找到今天最适合你的座位</h3>
+            <p>选择日期和时段，系统会实时拦截冲突预约。</p>
+          </div>
+          <div class="hero-stat"><strong id="availableCount">—</strong><span>当前可预约座位</span></div>
+        </div>
+        <div class="filter-card">
+          <label>日期<input id="bookingDate" type="date"></label>
+          <label>开始时间<select id="startTime"></select></label>
+          <label>结束时间<select id="endTime"></select></label>
+          <button id="refreshSeats" class="primary" type="button">查询座位</button>
+        </div>
+        <div class="section-head">
+          <div><h3>座位状态</h3><p class="muted">点击可预约座位查看详情并预约</p></div>
+          <div class="legend"><span><i class="dot available"></i>可预约</span><span><i class="dot busy"></i>已占用</span></div>
+        </div>
+        <div id="seatGrid" class="seat-grid"></div>
+      </section>
+
+      <!-- 我的预约 -->
+      <section id="page-mine" class="page hidden">
+        <div class="section-head">
+          <div><h3>我的预约</h3><p class="muted">签到需在时段开始前 30 分钟内进行，超时未签到会自动失效</p></div>
+          <button class="secondary" id="mineRefresh" type="button">刷新</button>
+        </div>
+        <div id="reservationList" class="reservation-list"></div>
+      </section>
+
+      <!-- 智能推荐 -->
+      <section id="page-recommend" class="page hidden">
+        <div class="hero compact">
+          <div>
+            <p class="eyebrow light">AI RECOMMENDATION</p>
+            <h3>按你的偏好推荐空闲座位</h3>
+            <p>可解释的规则评分：靠窗、电源、安静区分别加权，分数越高越匹配。</p>
+          </div>
+        </div>
+        <div class="filter-card">
+          <label>日期<input id="recommendDate" type="date"></label>
+          <label>开始时间<select id="recommendStart"></select></label>
+          <label>结束时间<select id="recommendEnd"></select></label>
+          <button id="loadRecommendations" class="primary" type="button">生成推荐</button>
+        </div>
+        <div id="recommendList" class="recommend-list"></div>
+      </section>
+
+      <!-- 管理看板 -->
+      <section id="page-admin" class="page hidden">
+        <div class="section-head">
+          <div><h3>管理看板</h3><p class="muted">预约运营概览、违规占座预警、座位与用户管理</p></div>
+          <div class="toolbar">
+            <button id="scanViolations" class="secondary" type="button">立即扫描超时预约</button>
+            <button id="adminRefresh" class="secondary" type="button">刷新</button>
+          </div>
+        </div>
+
+        <div class="tabs" id="adminTabs">
+          <button class="tab active" data-tab="overview" type="button">概览</button>
+          <button class="tab" data-tab="violations" type="button">违规预警</button>
+          <button class="tab" data-tab="seats" type="button">座位管理</button>
+          <button class="tab" data-tab="users" type="button">用户概览</button>
+        </div>
+
+        <div id="adminOverview">
+          <div id="statsCards" class="stats-grid"></div>
+          <div class="chart-grid">
+            <div class="panel chart-card"><h4>近 7 日预约趋势</h4><div id="trendChart"></div></div>
+            <div class="panel chart-card"><h4>热门座位 Top 5</h4><div id="popularChart"></div></div>
+          </div>
+          <div class="chart-grid three">
+            <div class="panel chart-card"><h4>时段分布</h4><div id="slotChart"></div></div>
+            <div class="panel chart-card"><h4>楼层分布</h4><div id="floorChart"></div></div>
+            <div class="panel chart-card"><h4>预约结果构成</h4><div id="cancelChart"></div></div>
+          </div>
+        </div>
+
+        <div id="adminViolations" class="panel hidden"></div>
+        <div id="adminSeats" class="panel hidden"></div>
+        <div id="adminUsers" class="panel hidden"></div>
+      </section>
     </main>
   </section>
-  <div id="seatModal" class="modal hidden"><div class="modal-card"><button class="close" data-close="seatModal">×</button><p class="eyebrow">SEAT DETAIL</p><h3 id="modalSeatTitle">座位</h3><p id="modalSeatMeta" class="muted"></p><div class="modal-info"><span id="modalWindow"></span><span id="modalPower"></span><span>支持预约冲突拦截</span></div><button id="confirmBooking" class="primary full">确认预约</button></div></div>
-  <script src="/app.js"></script>
+
+  <!-- 座位详情弹窗 -->
+  <div id="seatModal" class="modal hidden">
+    <div class="modal-card">
+      <button class="close" data-close="seatModal" type="button">×</button>
+      <p class="eyebrow">SEAT DETAIL</p>
+      <h3 id="modalSeatTitle">座位</h3>
+      <p id="modalSeatMeta" class="muted"></p>
+      <div class="modal-info">
+        <span id="modalWindow"></span>
+        <span id="modalPower"></span>
+        <span>支持预约冲突拦截</span>
+      </div>
+      <button id="confirmBooking" class="primary full" type="button">确认预约</button>
+    </div>
+  </div>
+
+  <script type="module" src="/js/main.js"></script>
 </body>
 </html>
