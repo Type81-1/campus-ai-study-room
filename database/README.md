@@ -22,6 +22,26 @@ python scripts/init_mysql.py --host 127.0.0.1 --user root --password 你的密�
 
 程序在 SQLite 模式下首次启动会自动建库到 `backend/data/study_room.db` 并写入演示数据，该文件不上传仓库。
 
+## 表结构（5 张）
+
+| 表 | 说明 |
+| --- | --- |
+| `users` | 账号、PBKDF2 口令哈希、角色、座位偏好 |
+| `sessions` | 登录令牌的 SHA-256 摘要与过期时间（v2.1 新增） |
+| `seats` | 座位编号、楼层、区域、属性、状态（`available` / `maintenance`） |
+| `reservations` | 预约时段与状态（`booked` / `checked_in` / `completed` / `cancelled` / `expired`） |
+| `violations` | 违规记录（`no_show` / `overstay`）与处理状态 |
+
+## 存量库升级说明
+
+`CREATE TABLE IF NOT EXISTS` 会自动补建 `sessions` 表，**无需手工迁移**。但 v2.1 把 `users.password` 加宽到 `VARCHAR(255)` 以容纳哈希串，若沿用 v2.0 建的 MySQL 库，需要执行一次：
+
+```sql
+ALTER TABLE users MODIFY COLUMN password VARCHAR(255) NOT NULL;
+```
+
+（SQLite 的 `TEXT` 类型不受影响，无需处理。启动时会自动把库里遗留的明文口令替换为哈希。）
+
 ## 两种方言的差异
 
 | 项 | MySQL | SQLite |
