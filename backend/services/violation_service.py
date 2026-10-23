@@ -84,26 +84,32 @@ class ViolationService:
                 )
                 if verdict is None:
                     continue
-                reservation_repo.set_status(session, reservation["id"], verdict.next_status)
-                grace = (
-                    self.cfg.no_show_grace_minutes
-                    if verdict.kind == KIND_NO_SHOW
-                    else self.cfg.overstay_grace_minutes
-                )
-                try:
-                    violation_repo.create(
-                        session,
-                        reservation["user_id"],
-                        reservation["id"],
-                        verdict.kind,
-                        build_message(verdict.kind, reservation, verdict.late_minutes, grace),
-                    )
-                    summary["violations"] += 1
-                except IntegrityError:
-                    pass  # 该预约的同类违规已存在，幂等跳过
+                created = self.apply(session, reservation, verdict)
+                summary["violations"] += 1 if created else 0
                 summary["expired" if verdict.kind == KIND_NO_SHOW else "overstay"] += 1
 
         return summary
+
+    # ---------- 单条执行（扫描与「签到超时」共用） ----------
+    def apply(self, session, reservation: dict, verdict: Verdict) -> bool:
+        """落库：流转预约状态 + 生成违规记录。返回是否新建了违规（幂等）。"""
+        reservation_repo.set_status(session, reservation["id"], verdict.next_status)
+        grace = (
+            self.cfg.no_show_grace_minutes
+            if verdict.kind == KIND_NO_SHOW
+            else self.cfg.overstay_grace_minutes
+        )
+        try:
+            violation_repo.create(
+                session,
+                reservation["user_id"],
+                reservation["id"],
+                verdict.kind,
+                build_message(verdict.kind, reservation, verdict.late_minutes, grace),
+            )
+            return True
+        except IntegrityError:
+            return False  # 该预约的同类违规已存在，幂等跳过
 
     # ---------- 查询 / 处理 ----------
     def list_all(self) -> list[dict]:

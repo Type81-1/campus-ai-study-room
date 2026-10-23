@@ -3,9 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-ACTIVE_STATUSES = ("booked", "checked_in")
-
-
 def find_overlap(session, seat_id, day: str, start: str, end: str, exclude_id=None) -> dict | None:
     """同一座位、同一日期、时段有交集且仍有效 → 冲突。"""
     sql = (

@@ -44,6 +44,13 @@ def make_handler(api: Api, cfg=config, quiet: bool = False):
             raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self._write(status, raw, "application/json; charset=utf-8")
 
+        def _read_token(self) -> str | None:
+            """从 Authorization: Bearer <token> 或 X-Auth-Token 取令牌。"""
+            header = self.headers.get("Authorization") or ""
+            if header.lower().startswith("bearer "):
+                return header[7:].strip() or None
+            return self.headers.get("X-Auth-Token") or None
+
         def _read_json(self) -> dict:
             length = int(self.headers.get("Content-Length", "0") or 0)
             if length > cfg.request_body_limit:
@@ -74,7 +81,7 @@ def make_handler(api: Api, cfg=config, quiet: bool = False):
 
             try:
                 payload = self._read_json() if method in ("POST", "PUT", "PATCH") else {}
-                status, body = api.handle(method, path, query, payload)
+                status, body = api.handle(method, path, query, payload, token=self._read_token())
                 self._send_json(body, status)
             except AppError as exc:
                 self._send_json({"ok": False, "code": exc.code, "message": exc.message}, exc.status)
@@ -93,9 +100,9 @@ def make_handler(api: Api, cfg=config, quiet: bool = False):
 
         def do_OPTIONS(self):
             self.send_response(204)
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Origin", cfg.cors_origin)
             self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Auth-Token")
             self.send_header("Content-Length", "0")
             self.end_headers()
 

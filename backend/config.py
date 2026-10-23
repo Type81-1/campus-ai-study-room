@@ -55,11 +55,21 @@ class Config:
         self.mysql_database: str = _env("MYSQL_DATABASE", "campus_study_room") or "campus_study_room"
         self.mysql_pool_size: int = _env_int("MYSQL_POOL_SIZE", 8)
 
+        # ---- 鉴权 ----
+        # 登录令牌有效期（天）；令牌只以 SHA-256 摘要入库
+        self.session_ttl_days: int = _env_int("SESSION_TTL_DAYS", 7)
+        # 允许跨域来源，部署时收敛成具体域名
+        self.cors_origin: str = _env("CORS_ORIGIN", "*") or "*"
+
         # ---- 违规预警规则 ----
         # 预约开始后超过 N 分钟仍未签到 → 判定「超时未签到」
         self.no_show_grace_minutes: int = _env_int("NO_SHOW_GRACE_MINUTES", 15)
         # 预约结束后超过 N 分钟仍未结束自习 → 判定「超时占用」
         self.overstay_grace_minutes: int = _env_int("OVERSTAY_GRACE_MINUTES", 30)
+        # 签到时间窗口：开始前 N 分钟开放签到（过晚则判超时未签到）
+        self.checkin_early_minutes: int = _env_int("CHECKIN_EARLY_MINUTES", 30)
+        # 是否强制校验签到窗口；测试或演示可用 CHECKIN_ENFORCED=0 关闭
+        self.checkin_enforced: bool = (_env("CHECKIN_ENFORCED", "1") or "1") not in ("0", "false", "False")
         # 违规统计窗口（天）与触发预约限制的阈值
         self.violation_window_days: int = _env_int("VIOLATION_WINDOW_DAYS", 30)
         self.violation_block_threshold: int = _env_int("VIOLATION_BLOCK_THRESHOLD", 3)
@@ -81,6 +91,8 @@ class Config:
             "no_show_grace_minutes": self.no_show_grace_minutes,
             "overstay_grace_minutes": self.overstay_grace_minutes,
             "violation_block_threshold": self.violation_block_threshold,
+            "checkin_early_minutes": self.checkin_early_minutes,
+            "session_ttl_days": self.session_ttl_days,
         }
 
 

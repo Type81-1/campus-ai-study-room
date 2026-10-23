@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS users (
     id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
     username    VARCHAR(64)  NOT NULL,
-    password    VARCHAR(128) NOT NULL,
+    password    VARCHAR(255) NOT NULL,   -- PBKDF2 哈希串约 118 字符
     name        VARCHAR(64)  NOT NULL,
     role        VARCHAR(16)  NOT NULL,
     preferences VARCHAR(255) NOT NULL DEFAULT '{}',
@@ -13,6 +13,19 @@ CREATE TABLE IF NOT EXISTS users (
     PRIMARY KEY (id),
     UNIQUE KEY uk_users_username (username),
     CONSTRAINT chk_users_role CHECK (role IN ('student', 'admin'))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    token_hash   CHAR(64)     NOT NULL,
+    user_id      INT UNSIGNED NOT NULL,
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at   DATETIME     NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_sessions_token (token_hash),
+    KEY idx_sessions_user (user_id),
+    KEY idx_sessions_expires (expires_at),
+    CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS seats (

@@ -11,6 +11,14 @@ CREATE TABLE IF NOT EXISTS users (
     created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS sessions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash   TEXT NOT NULL UNIQUE,
+    user_id      INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    expires_at   TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS seats (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     code        TEXT NOT NULL UNIQUE,
@@ -52,3 +60,5 @@ CREATE INDEX IF NOT EXISTS idx_reservation_user ON reservations (user_id, reserv
 CREATE INDEX IF NOT EXISTS idx_reservation_status ON reservations (status, reservation_date);
 CREATE INDEX IF NOT EXISTS idx_violation_user ON violations (user_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_seats_floor ON seats (floor, id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at);

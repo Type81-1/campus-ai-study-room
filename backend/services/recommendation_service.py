@@ -36,8 +36,9 @@ def score_seat(seat: dict, preferences: dict) -> tuple[int, list[str]]:
 
 
 class RecommendationService:
-    def __init__(self, db) -> None:
+    def __init__(self, db, cfg=None) -> None:
         self.db = db
+        self.cfg = cfg
 
     def recommend(self, user_id, day: str, start: str, end: str, limit: int = 5) -> list[dict]:
         slot = parse_slot(day, start, end)

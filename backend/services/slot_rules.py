@@ -66,3 +66,46 @@ def parse_slot(day_text, start_text, end_text, now: datetime | None = None) -> S
 def overlaps(a_start: datetime, a_end: datetime, b_start: datetime, b_end: datetime) -> bool:
     """半开区间相交判定：[start, end) 与 [start, end) 是否重叠。"""
     return a_start < b_end and a_end > b_start
+
+
+# --------------------------------------------------------------------------
+# 签到时间窗口
+# --------------------------------------------------------------------------
+CHECKIN_EARLY = "early"
+CHECKIN_OK = "ok"
+CHECKIN_LATE = "late"
+
+
+def evaluate_checkin_window(
+    reservation: dict,
+    now: datetime,
+    early_minutes: int,
+    no_show_grace_minutes: int,
+) -> str:
+    """判断当前时刻能否签到。
+
+    窗口 = [开始前 early_minutes, 开始后 no_show_grace_minutes]：
+    - 早于窗口 → early（还没到签到时间）
+    - 窗口内   → ok
+    - 晚于窗口 → late（按超时未签到处理）
+    """
+    start = datetime.strptime(
+        f"{reservation['reservation_date']} {reservation['start_time']}", "%Y-%m-%d %H:%M"
+    )
+    opens_at = start - timedelta(minutes=early_minutes)
+    closes_at = start + timedelta(minutes=no_show_grace_minutes)
+    if now < opens_at:
+        return CHECKIN_EARLY
+    if now > closes_at:
+        return CHECKIN_LATE
+    return CHECKIN_OK
+
+
+def checkin_window_text(reservation: dict, early_minutes: int, no_show_grace_minutes: int) -> str:
+    """给前端/错误提示用的窗口文案。"""
+    start = datetime.strptime(
+        f"{reservation['reservation_date']} {reservation['start_time']}", "%Y-%m-%d %H:%M"
+    )
+    opens_at = start - timedelta(minutes=early_minutes)
+    closes_at = start + timedelta(minutes=no_show_grace_minutes)
+    return f"{opens_at.strftime('%H:%M')} - {closes_at.strftime('%H:%M')}"

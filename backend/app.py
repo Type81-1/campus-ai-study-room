@@ -17,9 +17,13 @@ from .web import make_server
 
 def bootstrap(cfg=config):
     """返回 (database, api)：初始化库结构并装配服务，供启动脚本与测试复用。"""
+    from .services.auth_service import migrate_plaintext_passwords
+
     db = Database(cfg)
     db.initialize()
-    return db, Api(db)
+    # 存量明文口令一次性升级为 PBKDF2 哈希
+    migrate_plaintext_passwords(db)
+    return db, Api(db, cfg)
 
 
 def run(host: str | None = None, port: int | None = None, cfg=config) -> None:
@@ -31,6 +35,7 @@ def run(host: str | None = None, port: int | None = None, cfg=config) -> None:
     print("校园 AI 智能自习室预约系统已启动")
     print(f"  访问地址：http://{host}:{port}")
     print(f"  数据库：{info['database']}（{info['backend']}）")
+    print(f"  签到窗口：开始前 {info['checkin_early_minutes']} 分钟起可签到，令牌有效期 {info['session_ttl_days']} 天")
     print(f"  违规规则：超时未签到 {info['no_show_grace_minutes']} 分钟 / "
           f"超时占用 {info['overstay_grace_minutes']} 分钟 / "
           f"累计 {info['violation_block_threshold']} 条限制预约")
