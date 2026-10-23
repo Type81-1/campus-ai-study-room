@@ -3,6 +3,8 @@
 对应任务书「并发场景压力测试」与「预约冲突拦截」两项要求。
 用例在临时 SQLite 库上跑，写事务由 BEGIN IMMEDIATE 串行化；
 切到 MySQL 后同一套逻辑由 SELECT ... FOR UPDATE 保证。
+
+身份：每个线程使用独立令牌（直接签发，不跑口令哈希，避免拖慢并发起跑）。
 """
 from __future__ import annotations
 
@@ -10,20 +12,19 @@ import threading
 import time
 import unittest
 
-from tests.base import ApiTestCase, add_users, future_day
+from tests.base import ApiTestCase, add_users, future_day, issue_token
 from backend.errors import AppError
 
 
-def book_once(api, user_id, seat_id, day, start="09:00", end="11:00"):
+def book_once(api, token, seat_id, day, start="09:00", end="11:00"):
     payload = {
-        "user_id": user_id,
         "seat_id": seat_id,
         "reservation_date": day,
         "start_time": start,
         "end_time": end,
     }
     try:
-        return api.handle("POST", "/api/reservations", {}, payload)[0]
+        return api.handle("POST", "/api/reservations", {}, payload, token=token)[0]
     except AppError as exc:
         return exc.status
 
@@ -34,6 +35,7 @@ class ConcurrentBookingTest(ApiTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.users = add_users(self.db, self.THREADS)
+        self.tokens = [issue_token(self.db, uid) for uid in self.users]
         self.day = future_day()
 
     def _run_parallel(self, tasks):
@@ -59,7 +61,7 @@ class ConcurrentBookingTest(ApiTestCase):
     def test_same_seat_only_one_winner(self):
         """20 个用户同时抢同一个座位同一时段：只能有 1 个成功。"""
         tasks = [
-            (lambda uid=uid: book_once(self.api, uid, 1, self.day)) for uid in self.users
+            (lambda token=token: book_once(self.api, token, 1, self.day)) for token in self.tokens
         ]
         results, elapsed = self._run_parallel(tasks)
 
@@ -77,8 +79,9 @@ class ConcurrentBookingTest(ApiTestCase):
 
     def test_same_user_same_slot_only_once(self):
         """同一用户并发提交同一时段的不同座位：也只能成功 1 次。"""
+        token = self.tokens[0]
         tasks = [
-            (lambda seat=seat: book_once(self.api, self.users[0], seat, self.day))
+            (lambda seat=seat: book_once(self.api, token, seat, self.day))
             for seat in range(1, self.THREADS + 1)
         ]
         results, elapsed = self._run_parallel(tasks)
@@ -95,10 +98,10 @@ class ConcurrentBookingTest(ApiTestCase):
         print(f"\n  [并发] 同一用户 20 并发 → 1 成功，耗时 {elapsed:.2f}s")
 
     def test_different_seats_all_succeed(self):
-        """20 个用户抢 20 个不同座位：应全部成功，验证并发热路径没有互斥放大。"""
+        """20 个用户抢 20 个不同座位：应全部成功。"""
         tasks = [
-            (lambda uid=uid, seat=seat: book_once(self.api, uid, seat, self.day))
-            for uid, seat in zip(self.users, range(1, self.THREADS + 1))
+            (lambda token=token, seat=seat: book_once(self.api, token, seat, self.day))
+            for token, seat in zip(self.tokens, range(1, self.THREADS + 1))
         ]
         results, elapsed = self._run_parallel(tasks)
 

@@ -3,6 +3,8 @@
 与 tests/test_concurrency.py 的区别：这里走真实 HTTP、真实线程服务器，
 测出的是端到端的吞吐与延迟，用于测试报告的「并发场景压力测试」一节。
 
+鉴权：脚本直接为压测用户签发令牌（跳过口令哈希），请求统一带 Bearer 头。
+
 用法：
     python scripts/loadtest.py
     python scripts/loadtest.py --users 50 --rounds 3 --reads 100
@@ -21,7 +23,7 @@ import statistics
 import sys
 import threading
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,24 +36,33 @@ if os.environ["DB_BACKEND"] == "sqlite":
     import tempfile
 
     os.environ["STUDY_ROOM_DB"] = tempfile.mktemp(prefix="study_room_load_", suffix=".db")
+# 压测账号的口令哈希不必消耗真实迭代次数
+os.environ.setdefault("PBKDF2_ITERATIONS", "1000")
 
 from backend.app import bootstrap  # noqa: E402
 from backend.config import config  # noqa: E402
+from backend.repositories import session_repository  # noqa: E402
+from backend.security import hash_password, new_token, token_digest  # noqa: E402
 from backend.web import make_server  # noqa: E402
 
 
 class Client:
     """一次请求一个连接：http.client 的连接不是线程安全的，不能跨线程共享。"""
 
-    def __init__(self, host: str, port: int) -> None:
+    def __init__(self, host: str, port: int, token: str | None = None) -> None:
         self.host = host
         self.port = port
+        self.token = token
 
     def request(self, method: str, path: str, payload: dict | None = None) -> tuple[int, dict]:
         conn = http.client.HTTPConnection(self.host, self.port, timeout=60)
         try:
             body = json.dumps(payload).encode() if payload is not None else None
-            headers = {"Content-Type": "application/json"} if body else {}
+            headers = {}
+            if body:
+                headers["Content-Type"] = "application/json"
+            if self.token:
+                headers["Authorization"] = f"Bearer {self.token}"
             conn.request(method, path, body=body, headers=headers)
             response = conn.getresponse()
             raw = response.read()
@@ -64,19 +75,23 @@ class Client:
             conn.close()
 
 
-def seed_users(db, count: int) -> list[int]:
+def seed_users(db, count: int) -> list[str]:
+    """批量建压测用户并直接签发令牌，返回令牌列表。"""
     suffix = str(int(time.time()))[-5:]
-    ids = []
+    hashed = hash_password("123456")
+    expires_at = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    tokens = []
     with db.session(write=True) as session:
         for index in range(count):
-            ids.append(
-                session.insert(
-                    "INSERT INTO users (username,password,name,role,preferences) "
-                    "VALUES (?,?,?,'student','{}')",
-                    (f"load{suffix}{index:04d}", "123456", f"压测用户{index:04d}"),
-                )
+            user_id = session.insert(
+                "INSERT INTO users (username,password,name,role,preferences) "
+                "VALUES (?,?,?,'student','{}')",
+                (f"load{suffix}{index:04d}", hashed, f"压测用户{index:04d}"),
             )
-    return ids
+            token = new_token()
+            session_repository.create(session, user_id, token_digest(token), expires_at)
+            tokens.append(token)
+    return tokens
 
 
 def ensure_seats(db, count: int) -> int:
@@ -96,13 +111,13 @@ def ensure_seats(db, count: int) -> int:
 
 
 def run_parallel(host: str, port: int, tasks):
-    """tasks: [(method, path, payload)] → ([(status, elapsed_ms, data)], wall_seconds)"""
+    """tasks: [(token, method, path, payload)] → ([(status, elapsed_ms, data)], wall_seconds)"""
     barrier = threading.Barrier(len(tasks))
     results: list[tuple[int, float, dict]] = []
     lock = threading.Lock()
 
-    def worker(method, path, payload):
-        client = Client(host, port)
+    def worker(token, method, path, payload):
+        client = Client(host, port, token)
         barrier.wait()
         started = time.perf_counter()
         try:
@@ -168,7 +183,7 @@ def main() -> int:
     args = parser.parse_args()
 
     db, api = bootstrap()
-    users = seed_users(db, args.users)
+    tokens = seed_users(db, args.users)
     ensure_seats(db, args.users)
     server = make_server(api, "127.0.0.1", 0, quiet=True)
     host, port = server.server_address[0], server.server_address[1]
@@ -178,7 +193,7 @@ def main() -> int:
     print("校园 AI 智能自习室 —— 并发压力测试")
     print(f"  数据库：{info['database']}（{info['backend']}）")
     print(f"  并发线程：{args.users}，抢座轮数：{args.rounds}，查询请求：{args.reads}")
-    print(f"  服务地址：http://{host}:{port}")
+    print(f"  服务地址：http://{host}:{port}（Bearer 令牌鉴权）")
 
     summary = []
     tomorrow = (date.today() + timedelta(days=1)).isoformat()
@@ -187,41 +202,40 @@ def main() -> int:
     for round_index in range(1, args.rounds + 1):
         tasks = [
             (
+                token,
                 "POST",
                 "/api/reservations",
                 {
-                    "user_id": users[index],
                     "seat_id": round_index,
                     "reservation_date": tomorrow,
                     "start_time": "09:00",
                     "end_time": "11:00",
                 },
             )
-            for index in range(args.users)
+            for token in tokens
         ]
         results, wall = run_parallel(host, port, tasks)
         stats = report(f"场景 1/{round_index}：{args.users} 人并发抢同一个座位", results, wall)
         succeeded = stats["statuses"].get(201, 0)
         conflicts = stats["statuses"].get(409, 0)
-        expected_ok, expected_conflict = 1, args.users - 1
-        print(f"  结果校验：成功 {succeeded}（期望 {expected_ok}），冲突 {conflicts}（期望 {expected_conflict}）")
-        stats["passed"] = succeeded == expected_ok and conflicts == expected_conflict
+        print(f"  结果校验：成功 {succeeded}（期望 1），冲突 {conflicts}（期望 {args.users - 1}）")
+        stats["passed"] = succeeded == 1 and conflicts == args.users - 1
         summary.append(stats)
 
     # ---- 场景 2：N 人抢 N 个不同座位，应全部成功 ----
     tasks = [
         (
+            token,
             "POST",
             "/api/reservations",
             {
-                "user_id": users[index],
                 "seat_id": index + 1,
                 "reservation_date": tomorrow,
                 "start_time": "13:00",
                 "end_time": "15:00",
             },
         )
-        for index in range(args.users)
+        for index, token in enumerate(tokens)
     ]
     results, wall = run_parallel(host, port, tasks)
     stats = report(f"场景 2：{args.users} 人并发抢 {args.users} 个不同座位", results, wall)
@@ -232,7 +246,7 @@ def main() -> int:
 
     # ---- 场景 3：座位查询（读多场景）----
     tasks = [
-        ("GET", f"/api/seats?date={tomorrow}&start=13:00&end=15:00", None)
+        (tokens[0], "GET", f"/api/seats?date={tomorrow}&start=13:00&end=15:00", None)
         for _ in range(args.reads)
     ]
     results, wall = run_parallel(host, port, tasks)

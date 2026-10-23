@@ -78,17 +78,17 @@ class SplitSqlTest(unittest.TestCase):
         self.assertTrue(statements[0].startswith("CREATE TABLE"))
         self.assertIn("INSERT INTO", statements[1])
 
-    def test_mysql_schema_yields_four_tables(self):
+    def test_mysql_schema_yields_five_tables(self):
         schema = (DATABASE_DIR / "mysql" / "schema.sql").read_text(encoding="utf-8")
         statements = split_sql(schema)
-        self.assertEqual(len(statements), 4)
+        self.assertEqual(len(statements), 5)
         self.assertTrue(all("CREATE TABLE IF NOT EXISTS" in s for s in statements))
 
     def test_sqlite_schema_yields_tables_and_indexes(self):
         schema = (DATABASE_DIR / "sqlite" / "schema.sql").read_text(encoding="utf-8")
         statements = split_sql(schema)
-        self.assertEqual(sum("CREATE TABLE" in s for s in statements), 4)
-        self.assertEqual(sum("CREATE INDEX" in s for s in statements), 5)
+        self.assertEqual(sum("CREATE TABLE" in s for s in statements), 5)
+        self.assertEqual(sum("CREATE INDEX" in s for s in statements), 7)
 
 
 if __name__ == "__main__":

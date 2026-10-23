@@ -24,7 +24,7 @@ class SchemaConsistencyTest(unittest.TestCase):
         mysql_tables = set(TABLE_PATTERN.findall(read("mysql", "schema.sql")))
         sqlite_tables = set(TABLE_PATTERN.findall(read("sqlite", "schema.sql")))
         self.assertEqual(mysql_tables, sqlite_tables)
-        self.assertEqual(mysql_tables, {"users", "seats", "reservations", "violations"})
+        self.assertEqual(mysql_tables, {"users", "sessions", "seats", "reservations", "violations"})
 
     def test_seed_seats_match(self):
         mysql_seats = SEAT_PATTERN.findall(read("mysql", "seed.sql"))
