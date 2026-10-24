@@ -6,7 +6,18 @@
 
 ---
 
-## 本版（v2.1）主要改动
+## 本版（v2.2）主要改动
+
+| 项 | 改动 |
+| --- | --- |
+| 实时推送 | 新增 `GET /api/events`（SSE）：别人下单/取消/签到/座位维护后，当前页 1 秒内自动刷新；断线自动重连，顶栏显示「实时/离线」 |
+| 推荐算法 | v2 增加两个可解释因子（冷门座位、前后时段连续空闲），并返回时段热度（占用率 + 紧张程度 + 建议） |
+| 前端打磨 | 修复提示条遮挡顶栏、管理页标题重复、趋势图日期截断、窄屏品牌文字溢出与表格撑破页面；补 favicon |
+| 测试体系 | 新增 SSE 协议级测试（裸 socket）、事件总线单测、Playwright 真实浏览器 E2E + **截图像素基线对比**；后端用例增至 130 |
+| 文档 | 新增《需求规格说明书》（FR/BR/NFR 编号、数据字典、用例、需求追溯矩阵、任务书对照） |
+| 运维脚本 | 新增 `scripts/mysql_check.py`：一条命令完成 MySQL 建表自检、`FOR UPDATE` 行锁验证与并发压测 |
+
+## v2.1 主要改动
 
 | 项 | 改动 |
 | --- | --- |
@@ -15,7 +26,6 @@
 | 签到 | 新增签到时间窗口：开始前 30 分钟开放，超过「开始 + 15 分钟」判失效并记违规 |
 | 后台 | 新增座位维护（开放/维护中切换）与用户概览（预约数、待处理违规），管理看板拆成四个页签 |
 | 前端 | `app.js` 25 行压缩代码重写为 ES 模块（api / store / ui / charts / pages），新增自研 SVG 图表（折线、环形、排行），零第三方依赖 |
-| 测试 | 单元 49 + 集成 53 + 并发 3 = **105 个用例**，外加 25 项前端无头冒烟检查 |
 
 ## v2.0 主要改动
 
@@ -33,8 +43,9 @@
 - 后端：Python 3.10+ 标准库 `http.server`；MySQL 模式需要 `PyMySQL`
 - 数据库：MySQL 8（生产/验收）/ SQLite（本地演示、单元测试）
 - 鉴权：Bearer 令牌 + `sessions` 表，PBKDF2 口令哈希
+- 实时：Server-Sent Events（进程内事件总线，零第三方依赖）
 - 前端：原生 HTML / CSS / ES Module，图表为自研 SVG 组件（无 CDN、无构建）
-- 测试：标准库 `unittest` + 自研并发压测脚本 + jsdom 前端冒烟脚本
+- 测试：标准库 `unittest` + 自研压测脚本 + jsdom 冒烟 + Playwright E2E/截图基线
 - 协作：Git，`dev` 开发、`main` 稳定
 
 ---
@@ -103,7 +114,8 @@ python backend/server.py
 | DELETE | `/api/reservations/{id}` | 取消预约 |
 | POST | `/api/reservations/{id}/checkin` | 签到核销（限签到窗口内） |
 | POST | `/api/reservations/{id}/checkout` | 结束自习 |
-| GET | `/api/recommendations?date=&start=&end=` | 智能推荐 |
+| GET | `/api/recommendations?date=&start=&end=` | 智能推荐（含时段热度上下文） |
+| GET | `/api/events?token=` | SSE 实时事件流（预约/座位/违规变更） |
 | GET | `/api/admin/stats` | 管理统计 |
 | GET | `/api/admin/violations` | 违规预警列表 |
 | POST | `/api/admin/violations/{id}/resolve` | 处理违规 |
@@ -113,6 +125,19 @@ python backend/server.py
 | POST | `/api/admin/seats/{id}/status` | 切换座位状态：`available` / `maintenance` |
 
 统一返回结构：成功 `{"ok": true, ...}`，失败 `{"ok": false, "code": "...", "message": "..."}`。
+
+## 实时推送
+
+预约、取消、签到、结束、座位维护、违规扫描/处理都会通过 SSE 广播，前端按事件自动刷新，无需手动点"刷新"。
+
+| 事件 | 触发 |
+| --- | --- |
+| `reservation.created` / `cancelled` | 创建 / 取消预约 |
+| `reservation.checked_in` / `checked_out` | 签到 / 结束自习 |
+| `seat.status` | 座位维护状态变化 |
+| `violation.scanned` / `resolved` | 违规扫描 / 处理 |
+
+事件总线为进程内实现（慢消费者丢最旧事件、连接数有上限）；多进程部署时把 `backend/events.py` 换成 Redis Pub/Sub 即可，上层接口不变。
 
 ---
 
@@ -151,6 +176,7 @@ campus-ai-study-room/
 │  ├─ db.py                  # 数据底座：连接池 / 事务 / 加锁 / 方言适配
 │  ├─ web.py                 # HTTP 传输层（Bearer 令牌、CORS、静态资源）
 │  ├─ sweeper.py             # 违规扫描后台线程
+│  ├─ events.py              # 事件总线（SSE 数据源）
 │  ├─ api/router.py          # 路由表（令牌 → actor）
 │  ├─ services/              # 业务层：auth / reservation / violation / recommendation / stats / admin / slot_rules
 │  ├─ repositories/          # 仓储层：user / session / seat / reservation / violation / stats
@@ -159,15 +185,19 @@ campus-ai-study-room/
 │  ├─ mysql/                 # MySQL 建表 + 初始化数据
 │  └─ sqlite/                # SQLite 建表 + 初始化数据
 ├─ frontend/
-│  ├─ index.html / styles.css
-│  └─ js/                    # ES 模块：api / store / ui / charts / pages / main
-├─ tests/                    # 单元测试 + 集成测试 + 并发测试
+│  ├─ index.html / styles.css / favicon.svg
+│  ├─ js/                    # ES 模块：api / realtime / store / ui / charts / pages / main
+│  └─ tests/                 # jsdom 冒烟 + Playwright E2E（含截图基线）
+├─ tests/                    # 单元测试 + 集成测试 + SSE 测试 + 并发测试
 ├─ scripts/
 │  ├─ loadtest.py            # HTTP 层并发压力测试
+│  ├─ mysql_check.py         # MySQL 实机自检与压测
+│  ├─ seed_demo.py           # 演示数据
 │  └─ init_mysql.py          # MySQL 一键初始化
 ├─ docs/
+│  ├─ 需求规格/需求规格说明书.md
 │  ├─ 系统设计/当前代码设计图稿.md
-│  └─ 测试报告/测试报告-v2.1.md
+│  └─ 测试报告/测试报告-v2.2.md
 ├─ demo-data/                # 脱敏演示数据说明
 ├─ docker-compose.yml        # MySQL 8 一键启动
 └─ .env.example              # 环境变量样例
@@ -178,15 +208,31 @@ campus-ai-study-room/
 ## 测试
 
 ```powershell
-# 全部用例（105 个）
+# 后端全部用例（130 个：单元 66 / 集成 55 / SSE 6 / 并发 3）
 python -m unittest discover -s tests -t . -v
 
 # 并发压力测试（自动起临时服务，不影响开发数据）
 python scripts/loadtest.py --users 30 --rounds 3 --reads 100
+
+# 前端：先启动服务并灌演示数据
+python backend/server.py
+python scripts/seed_demo.py
+cd frontend/tests && npm install
+node ui-smoke.mjs                                     # jsdom 冒烟（25 项）
+$env:BASE_URL="http://127.0.0.1:8000"; node ui-e2e.mjs  # 真实浏览器 + 截图基线（22 项）
 ```
 
-当前结果：单元测试 49、集成测试 53、并发测试 3，全部通过；另有 25 项前端无头冒烟检查（jsdom）通过。
-详细数据见 [`docs/测试报告/测试报告-v2.1.md`](docs/测试报告/测试报告-v2.1.md)。
+当前结果：后端 130 个用例、前端冒烟 25 项、E2E 22 项全部通过；截图基线与本次运行差异 0.000%。
+详细数据见 [`docs/测试报告/测试报告-v2.2.md`](docs/测试报告/测试报告-v2.2.md)。
+
+## MySQL 实机验证
+
+```powershell
+docker compose up -d                                   # 或使用已有的 MySQL
+python scripts/mysql_check.py --password studyroom      # 建表自检 + 行锁验证 + 并发压测
+```
+
+脚本会检查表结构/引擎/索引，跑一次"两人抢同一座位"验证 `SELECT ... FOR UPDATE` 生效，再做 20 线程并发压测。
 
 ---
 
@@ -199,6 +245,8 @@ python scripts/loadtest.py --users 30 --rounds 3 --reads 100
 5. **身份不可伪造**：令牌随机生成、库里只存摘要、有效期固定；接口不接收 `user_id`，越权只能靠拿到别人的令牌，而不是改一个数字。
 6. **鉴权不抢写锁**：`authenticate()` 走只读事务，避免把每个请求都串行化在 SQLite 的写锁上（实测读吞吐从 37 提升到 271 req/s）。
 7. **前端零依赖**：图表是自己写的 SVG 组件（`charts.js`），不依赖 CDN，离线答辩也能正常出图。
+8. **实时但不阻塞**：SSE 发布走内存队列，队列满时丢最旧事件；订阅数有上限，慢客户端不会拖住请求线程。
+9. **推荐可解释**：六个因子各自对应一句理由文案，答辩时能解释"为什么推荐这个座位"；热度只提示不打分，避免全局信息影响排序。
 
 ---
 
