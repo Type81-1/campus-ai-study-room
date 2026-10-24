@@ -8,7 +8,7 @@ from __future__ import annotations
 import unittest
 from datetime import date, datetime, time
 
-from tests.base import DEMO_PASSWORD, ApiTestCase, future_day, today_text
+from tests.base import DEMO_PASSWORD, ApiTestCase, add_users, future_day, issue_token, today_text
 
 
 class HealthAndAuthTest(ApiTestCase):
@@ -281,6 +281,36 @@ class RecommendationTest(ApiTestCase):
             token=self.tokens["student002"],
         )
         self.assertNotIn(1, [item["id"] for item in body["recommendations"]])
+
+    def test_returns_heat_context(self):
+        status, body = self.get(
+            "/api/recommendations", {"date": [future_day()], "start": ["09:00"], "end": ["11:00"]}
+        )
+        self.assertEqual(status, 200)
+        context = body["context"]
+        self.assertEqual(context["total_seats"], 24)
+        self.assertEqual(context["busy_seats"], 0)
+        self.assertEqual(context["slot_heat"], 0.0)
+        self.assertEqual(context["heat_label"], "空闲")
+        self.assertIn("充足", context["advice"])
+
+    def test_heat_grows_with_bookings(self):
+        day = future_day()
+        # 同一用户同一时段只能约一个座位，这里造 12 个不同用户把 12 个座位占满一半
+        extra = [issue_token(self.db, uid) for uid in add_users(self.db, 10)]
+        tokens = [self.tokens["student001"], self.tokens["student002"], *extra]
+        for index, token in enumerate(tokens):
+            status, body = self.book(index + 1, day, "09:00", "11:00", token=token)
+            self.assertEqual(status, 201, body)
+        status, body = self.get(
+            "/api/recommendations", {"date": [day], "start": ["09:00"], "end": ["11:00"]}
+        )
+        context = body["context"]
+        self.assertEqual(context["busy_seats"], 12)
+        self.assertEqual(context["available_seats"], 12)
+        self.assertEqual(context["slot_heat"], 50.0)
+        self.assertEqual(context["heat_label"], "较松")
+        self.assertEqual(len(body["recommendations"]), 5)
 
     def test_preference_changes_ranking(self):
         status, body = self.get(
