@@ -90,6 +90,10 @@ def _truncate(db):
     with db.session(write=True) as session:
         for table in ("sessions", "violations", "reservations", "users", "seats"):
             session.execute(f"DELETE FROM {table}")
+        if db.dialect == "mysql":
+            # DELETE 不会重置自增，用例里按固定 id（1~24）引用座位会 404
+            for table in ("sessions", "violations", "reservations", "users", "seats"):
+                session.execute(f"ALTER TABLE {table} AUTO_INCREMENT = 1")
         for statement in (
             "INSERT INTO users (username,password,name,role,preferences) VALUES "
             "('student001','123456','演示学生','student','{\"window\": true, \"power\": true}')",

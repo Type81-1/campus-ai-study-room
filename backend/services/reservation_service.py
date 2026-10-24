@@ -71,13 +71,17 @@ class ReservationService:
         slot = parse_slot(day, start, end)
 
         with self.db.session(write=True) as session:
-            self._ensure_no_blocking_violation(session, actor["id"])
-
+            # 顺序很重要：锁座位必须是事务里的第一条语句。
+            # MySQL 的 REPEATABLE READ 在第一次普通读时建立读视图，
+            # 若先做违规阈值查询，读视图会早于锁建立，
+            # 后续冲突检查就读不到并发事务刚提交的预约 —— 会造成同一座位双订。
             seat = seat_repository.lock(session, seat_id)
             if not seat:
                 raise NotFound("座位不存在")
             if seat["status"] != "available":
                 raise ConflictError("该座位正在维护，暂不可预约")
+
+            self._ensure_no_blocking_violation(session, actor["id"])
 
             if repo.find_overlap(session, seat_id, slot.day_text, slot.start_text, slot.end_text):
                 raise ConflictError("该座位在所选时段已被预约，请选择其他座位")

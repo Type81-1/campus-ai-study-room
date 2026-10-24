@@ -4,7 +4,13 @@ from __future__ import annotations
 from datetime import datetime
 
 def find_overlap(session, seat_id, day: str, start: str, end: str, exclude_id=None) -> dict | None:
-    """同一座位、同一日期、时段有交集且仍有效 → 冲突。"""
+    """同一座位、同一日期、时段有交集且仍有效 → 冲突。
+
+    注意：这里不用 FOR UPDATE。同一座位的写入已由座位行锁串行化
+    （见 ReservationService.create 的第一条语句），加锁读反而会在
+    `reservations` 索引上产生间隙锁，并发插入时容易死锁。
+    MySQL 侧通过 READ COMMITTED 保证读到的都是最新已提交数据。
+    """
     sql = (
         "SELECT id FROM reservations "
         "WHERE seat_id=? AND reservation_date=? AND status IN ('booked','checked_in') "

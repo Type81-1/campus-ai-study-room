@@ -128,14 +128,27 @@ def check_schema(db) -> bool:
     return ok
 
 
+def _new_seat(db, code: str) -> int:
+    """每次运行都新建座位，避免上一次压测留下的预约干扰判断。"""
+    with db.session(write=True) as session:
+        return session.insert(
+            "INSERT INTO seats (code,floor,zone,seat_type,near_window,power,status) "
+            "VALUES (?,?,?,?,?,?,'available')",
+            (code, 9, "验证区", "standard", 0, 1),
+        )
+
+
 def check_row_lock(db) -> bool:
     """两个用户同时抢同一座位：验证 FOR UPDATE 行锁确实只放行一个。"""
     from backend.api.router import Api
     from backend.repositories import session_repository
     from backend.security import hash_password, new_token, token_digest
 
+    from backend.errors import AppError
+
     api = Api(db)
     day = (date.today() + timedelta(days=2)).isoformat()
+    seat_id = _new_seat(db, f"LK{int(time.time()) % 100000}")
     hashed = hash_password("123456")
     expires = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
     tokens = []
@@ -154,16 +167,22 @@ def check_row_lock(db) -> bool:
     results: list[int] = []
     lock = threading.Lock()
 
+    errors: list[str] = []
+
     def worker(token):
         barrier.wait()
         try:
             status = api.handle(
                 "POST", "/api/reservations", {},
-                {"seat_id": 1, "reservation_date": day, "start_time": "09:00", "end_time": "11:00"},
+                {"seat_id": seat_id, "reservation_date": day, "start_time": "09:00", "end_time": "11:00"},
                 token=token,
             )[0]
-        except Exception:  # AppError 已在 handle 内转成状态码，这里只兜底网络类异常
+        except AppError as exc:  # 业务异常按 HTTP 语义计入状态码
+            status = exc.status
+        except Exception as exc:  # 真实故障
             status = 0
+            with lock:
+                errors.append(f"{type(exc).__name__}: {exc}")
         with lock:
             results.append(status)
 
@@ -174,9 +193,11 @@ def check_row_lock(db) -> bool:
         thread.join(timeout=30)
 
     ok = results.count(201) == 1 and results.count(409) == 1
-    print(f"[行锁验证] 两人同抢一个座位 → 状态码 {results}（期望 [201, 409] 的排列）")
+    print(f"[行锁验证] 两人同抢一个座位（座位 {seat_id}）→ 状态码 {sorted(results)}（期望 [201, 409]）")
     if not ok:
         print("[失败] 行锁未生效，出现双订或异常")
+        for item in errors[:3]:
+            print(f"       异常：{item}")
     return ok
 
 
@@ -184,6 +205,8 @@ def run_load(db, threads: int) -> bool:
     from backend.api.router import Api
     from backend.repositories import session_repository
     from backend.security import hash_password, new_token, token_digest
+
+    from backend.errors import AppError
 
     api = Api(db)
     day = (date.today() + timedelta(days=3)).isoformat()
@@ -201,24 +224,13 @@ def run_load(db, threads: int) -> bool:
             session_repository.create(session, uid, token_digest(token), expires)
             tokens.append(token)
 
-    for seat_id in range(1, threads + 1):
-        with db.session(write=True) as session:
-            exists = session.query_one("SELECT id FROM seats WHERE code=?", (f"ML-{seat_id:03d}",))
-            if not exists:
-                session.execute(
-                    "INSERT INTO seats (code,floor,zone,seat_type,near_window,power,status) "
-                    "VALUES (?,?,?,?,?,?,'available')",
-                    (f"ML-{seat_id:03d}", 5, "安静区", "standard", 0, 1),
-                )
-    with db.session() as session:
-        seat_ids = [
-            row["id"]
-            for row in session.query_all("SELECT id FROM seats ORDER BY id LIMIT ?", (threads,))
-        ]
+    stamp = int(time.time())
+    seat_ids = [_new_seat(db, f"LD{stamp % 100000}{index:02d}") for index in range(threads)]
 
     barrier = threading.Barrier(threads)
     latencies: list[float] = []
     statuses: dict[int, int] = {}
+    load_errors: list[str] = []
     lock = threading.Lock()
 
     def worker(token, seat_id):
@@ -231,6 +243,12 @@ def run_load(db, threads: int) -> bool:
                 {"seat_id": seat_id, "reservation_date": day, "start_time": "15:00", "end_time": "17:00"},
                 token=token,
             )[0]
+        except AppError as exc:
+            code = exc.status
+        except Exception as exc:
+            with lock:
+                load_errors.append(f"{type(exc).__name__}: {exc}")
+            code = 0
         finally:
             elapsed = (time.perf_counter() - started) * 1000
             with lock:
@@ -253,6 +271,8 @@ def run_load(db, threads: int) -> bool:
     )
     if not ok:
         print(f"[失败] 状态码分布 {statuses}")
+        for item in load_errors[:3]:
+            print(f"       异常：{item}")
     return ok
 
 

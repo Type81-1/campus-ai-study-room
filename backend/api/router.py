@@ -67,7 +67,7 @@ class Api:
         return 200, {
             "ok": True,
             "service": "study-room",
-            "version": "2.1",
+            "version": "2.2",
             "time": datetime.now().isoformat(timespec="seconds"),
             "database": self.cfg.describe(),
         }

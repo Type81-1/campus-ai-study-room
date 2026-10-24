@@ -154,7 +154,7 @@ class _MySQLPool:
         try:
             conn = self._idle.get_nowait()
             try:
-                conn.ping(reconnect=True)
+                conn.ping()  # 探活；PyMySQL 1.1 起 reconnect 参数已废弃，失败就重建连接
                 return conn
             except Exception:
                 try:
