@@ -94,3 +94,14 @@ def busy_seat_ids(session, day: str, start: str, end: str) -> set[int]:
     )
     return {int(row["seat_id"]) for row in rows}
 
+
+
+def seat_recent_counts(session, since_day: str) -> dict[int, int]:
+    """近 N 天每个座位的有效预约次数，用于推荐里的「冷热度」因子。"""
+    rows = session.query_all(
+        "SELECT seat_id, COUNT(*) AS total FROM reservations "
+        "WHERE reservation_date >= ? AND status != 'cancelled' "
+        "GROUP BY seat_id",
+        (since_day,),
+    )
+    return {int(row["seat_id"]): int(row["total"]) for row in rows}
