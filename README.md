@@ -196,6 +196,7 @@ campus-ai-study-room/
 │  └─ init_mysql.py          # MySQL 一键初始化
 ├─ docs/
 │  ├─ 需求规格/需求规格说明书.md
+│  ├─ 环境搭建/本地MySQL环境.md
 │  ├─ 系统设计/当前代码设计图稿.md
 │  └─ 测试报告/测试报告-v2.2.md
 ├─ demo-data/                # 脱敏演示数据说明
@@ -222,17 +223,34 @@ node ui-smoke.mjs                                     # jsdom 冒烟（25 项）
 $env:BASE_URL="http://127.0.0.1:8000"; node ui-e2e.mjs  # 真实浏览器 + 截图基线（22 项）
 ```
 
-当前结果：后端 130 个用例、前端冒烟 25 项、E2E 22 项全部通过；截图基线与本次运行差异 0.000%。
+当前结果：后端 130 个用例（SQLite 与 MySQL 双跑）、前端冒烟 25 项、E2E 22 项全部通过；截图基线与本次运行差异 0.000%。
 详细数据见 [`docs/测试报告/测试报告-v2.2.md`](docs/测试报告/测试报告-v2.2.md)。
 
 ## MySQL 实机验证
 
+本机已装 MySQL 8.0.40 便携版（`D:\MySQL`，端口 **3307**，root/studyroom），详见
+[`docs/环境搭建/本地MySQL环境.md`](docs/环境搭建/本地MySQL环境.md)。
+
 ```powershell
-docker compose up -d                                   # 或使用已有的 MySQL
-python scripts/mysql_check.py --password studyroom      # 建表自检 + 行锁验证 + 并发压测
+D:\MySQL\start-mysql.bat                                          # 启动数据库
+python scripts/init_mysql.py --port 3307 --password studyroom     # 建表 + 演示数据
+python scripts/mysql_check.py --port 3307 --password studyroom    # 建表自检 + 行锁验证 + 压测
 ```
 
-脚本会检查表结构/引擎/索引，跑一次"两人抢同一座位"验证 `SELECT ... FOR UPDATE` 生效，再做 20 线程并发压测。
+最近一次结果：
+
+```text
+[建表自检] 5 张表、29 个索引，reservations 引擎 InnoDB
+[行锁验证] 两人同抢一个座位 → [201, 409]
+[并发压测] 20 线程抢不同座位 → 20/20 成功，41.7 req/s
+===== 3/3 项通过 =====
+```
+
+整套用例也能跑在 MySQL 上（130/130 通过）：把 `TEST_DB_BACKEND` 设为 `mysql`、`MYSQL_PORT` 设为 `3307`、
+`MYSQL_PASSWORD` 设为 `studyroom`，再执行 `python -m unittest discover -s tests -t . -v` 即可。
+
+> 实测写吞吐：SQLite 28~40 req/s，MySQL 283~374 req/s（InnoDB 行锁并行）。MySQL 上还额外发现了两个只在
+> `REPEATABLE READ` 隔离级别下才出现的并发问题，修复记录见测试报告 D-18、D-19。
 
 ---
 
