@@ -7,12 +7,14 @@
 from __future__ import annotations
 
 import json
+import queue
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .config import config
 from .errors import AppError
+from .events import TooManySubscribers, bus
 from .api.router import Api
 
 CONTENT_TYPES = {
@@ -23,6 +25,7 @@ CONTENT_TYPES = {
     ".svg": "image/svg+xml",
     ".ico": "image/x-icon",
     ".png": "image/png",
+    ".svg": "image/svg+xml",
 }
 
 
@@ -51,6 +54,56 @@ def make_handler(api: Api, cfg=config, quiet: bool = False):
                 return header[7:].strip() or None
             return self.headers.get("X-Auth-Token") or None
 
+        # ---------------- SSE 实时事件 ----------------
+        def _sse_chunk(self, text: str) -> None:
+            data = text.encode("utf-8")
+            self.wfile.write(f"{len(data):X}\r\n".encode("ascii") + data + b"\r\n")
+            self.wfile.flush()
+
+        def _stream_events(self, query: dict) -> None:
+            """/api/events：Server-Sent Events 长连接。
+
+            EventSource 无法自定义请求头，因此这里允许用 ?token= 传令牌；
+            令牌仍是短期有效的会话令牌，且只读事件流不涉及写操作。
+            """
+            token = (query.get("token") or [None])[0] or self._read_token()
+            try:
+                actor = api.authenticate(token)
+            except AppError as exc:
+                self._send_json({"ok": False, "code": exc.code, "message": exc.message}, exc.status)
+                return
+
+            try:
+                channel = bus.subscribe()
+            except TooManySubscribers as exc:
+                self._send_json({"ok": False, "message": str(exc)}, 503)
+                return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-transform")
+            self.send_header("Connection", "close")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            self.close_connection = True
+
+            try:
+                self._sse_chunk(f": connected as {actor['username']}\n\n")
+                self._sse_chunk("retry: 3000\n\n")
+                while True:
+                    try:
+                        event = channel.get(timeout=cfg.sse_heartbeat_seconds)
+                    except queue.Empty:
+                        self._sse_chunk(": ping\n\n")
+                        continue
+                    payload = json.dumps(event, ensure_ascii=False)
+                    self._sse_chunk(f"event: {event['type']}\ndata: {payload}\n\n")
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            finally:
+                bus.unsubscribe(channel)
+
         def _read_json(self) -> dict:
             length = int(self.headers.get("Content-Length", "0") or 0)
             if length > cfg.request_body_limit:
@@ -71,6 +124,13 @@ def make_handler(api: Api, cfg=config, quiet: bool = False):
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
             query = parse_qs(parsed.query)
+
+            if path == "/api/events":
+                if method != "GET":
+                    self._send_json({"ok": False, "message": "仅支持 GET"}, 405)
+                else:
+                    self._stream_events(query)
+                return
 
             if not path.startswith("/api/"):
                 if method == "GET":

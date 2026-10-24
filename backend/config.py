@@ -61,6 +61,10 @@ class Config:
         # 允许跨域来源，部署时收敛成具体域名
         self.cors_origin: str = _env("CORS_ORIGIN", "*") or "*"
 
+        # ---- 实时推送（SSE） ----
+        self.sse_heartbeat_seconds: int = _env_int("SSE_HEARTBEAT_SECONDS", 15)
+        self.sse_max_clients: int = _env_int("SSE_MAX_CLIENTS", 50)
+
         # ---- 违规预警规则 ----
         # 预约开始后超过 N 分钟仍未签到 → 判定「超时未签到」
         self.no_show_grace_minutes: int = _env_int("NO_SHOW_GRACE_MINUTES", 15)

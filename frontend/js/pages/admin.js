@@ -5,6 +5,7 @@
 import { api } from '../api.js';
 import { $, $$, emptyState, esc, formatDate, formatDateTime, loading, statusBadge, toast } from '../ui.js';
 import { renderBars, renderDonut, renderLine, renderRankBars } from '../charts.js';
+import { subscribe } from '../realtime.js';
 
 let refs = null;
 let currentTab = 'overview';
@@ -29,6 +30,13 @@ export function init() {
   refs.scan.addEventListener('click', scan);
   refs.violations.addEventListener('click', resolve);
   refs.seats.addEventListener('click', toggleSeat);
+
+  let timer = null;
+  subscribe(() => {
+    if ($('#page-admin')?.classList.contains('hidden')) return;
+    clearTimeout(timer);
+    timer = setTimeout(refresh, 700);
+  });
 }
 
 function switchTab(name) {
@@ -73,8 +81,11 @@ function renderOverview(stats) {
     )
     .join('');
 
-  const trend = [...(stats.by_day || [])].reverse();
-  renderLine($('#trendChart'), trend, { height: 200 });
+  const trend = [...(stats.by_day || [])].reverse().map((item) => ({
+    ...item,
+    label: String(item.day || '').slice(5), // 2026-10-24 → 10-24
+  }));
+  renderLine($('#trendChart'), trend, { height: 200, labelKey: 'label' });
   renderRankBars($('#popularChart'), stats.popular || [], { unit: ' 次' });
   renderDonut(
     $('#slotChart'),

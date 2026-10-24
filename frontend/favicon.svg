@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="校园 AI 智能自习室">
+  <rect width="64" height="64" rx="16" fill="#2563eb"/>
+  <path d="M20 22h24v5H20zM20 30h16v5H20z" fill="#ffffff" opacity="0.92"/>
+  <circle cx="41" cy="41" r="7" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.92"/>
+  <path d="M46 46l6 6" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.92"/>
+</svg>

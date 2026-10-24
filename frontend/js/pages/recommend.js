@@ -1,6 +1,7 @@
 /** 智能推荐页：按偏好打分排序，展示可解释理由。 */
 import { api } from '../api.js';
 import { $, esc, fillTimeSelect, loading, toast, todayISO, emptyState } from '../ui.js';
+import { subscribe } from '../realtime.js';
 
 let refs = null;
 
@@ -18,6 +19,13 @@ export function init() {
   fillTimeSelect(refs.end, { value: '11:00', from: 2 });
   refs.action.addEventListener('click', refresh);
   refs.list.addEventListener('click', onBook);
+
+  let timer = null;
+  subscribe(() => {
+    if ($('#page-recommend')?.classList.contains('hidden')) return;
+    clearTimeout(timer);
+    timer = setTimeout(refresh, 600);
+  });
 }
 
 export async function refresh() {
@@ -31,10 +39,27 @@ export async function refresh() {
   refs.list.innerHTML = loading(3);
   try {
     const data = await api.recommendations(date, start, end);
+    renderHeat(data.context);
     render(data.recommendations, { date, start, end });
   } catch (error) {
     refs.list.innerHTML = emptyState(error.message);
   }
+}
+
+function renderHeat(context) {
+  const el = $('#heatBanner');
+  if (!el) return;
+  if (!context) {
+    el.classList.add('hidden');
+    return;
+  }
+  const heat = Math.min(100, Number(context.slot_heat) || 0);
+  el.classList.remove('hidden');
+  el.classList.toggle('tight', heat >= 60);
+  el.innerHTML = `<strong>${esc(context.heat_label)}</strong>
+    <span class="heat-meta">${esc(context.advice)}</span>
+    <div class="heat-track"><div class="heat-fill" style="width:${heat}%"></div></div>
+    <span class="heat-meta">${context.busy_seats}/${context.total_seats} 已占用</span>`;
 }
 
 function render(items, slot) {

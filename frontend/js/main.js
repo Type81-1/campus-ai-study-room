@@ -5,6 +5,7 @@
 import { api, auth } from './api.js';
 import { $, $$, esc, toast } from './ui.js';
 import { setUser, state } from './store.js';
+import { connect as connectRealtime, disconnect as disconnectRealtime } from './realtime.js';
 import * as booking from './pages/booking.js';
 import * as my from './pages/my.js';
 import * as recommend from './pages/recommend.js';
@@ -45,10 +46,12 @@ function enterApp(user) {
   $('#loginView').classList.add('hidden');
   $('#appView').classList.remove('hidden');
   renderUser(user);
+  connectRealtime();
   switchPage(user.role === 'admin' ? 'admin' : 'booking');
 }
 
 function leaveApp(message) {
+  disconnectRealtime();
   setUser(null);
   auth.clear();
   $('#appView').classList.add('hidden');

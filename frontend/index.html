@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>校园 AI 智能自习室</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -44,7 +45,10 @@
     <main class="main-content">
       <header class="topbar">
         <div><p class="eyebrow">GOOD STUDY, GOOD DAY</p><h2 id="pageTitle">预约座位</h2></div>
-        <div class="date-pill" id="todayLabel"></div>
+        <div class="topbar-right">
+          <span id="realtimeBadge" class="live-badge off" title="实时连接状态">离线</span>
+          <div class="date-pill" id="todayLabel"></div>
+        </div>
       </header>
 
       <!-- 预约座位 -->
@@ -94,13 +98,14 @@
           <label>结束时间<select id="recommendEnd"></select></label>
           <button id="loadRecommendations" class="primary" type="button">生成推荐</button>
         </div>
+        <div id="heatBanner" class="heat-banner hidden"></div>
         <div id="recommendList" class="recommend-list"></div>
       </section>
 
       <!-- 管理看板 -->
       <section id="page-admin" class="page hidden">
         <div class="section-head">
-          <div><h3>管理看板</h3><p class="muted">预约运营概览、违规占座预警、座位与用户管理</p></div>
+          <div><p class="muted">预约运营概览、违规占座预警、座位与用户管理</p></div>
           <div class="toolbar">
             <button id="scanViolations" class="secondary" type="button">立即扫描超时预约</button>
             <button id="adminRefresh" class="secondary" type="button">刷新</button>

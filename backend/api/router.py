@@ -11,6 +11,7 @@ from datetime import datetime
 from ..config import config
 from ..db import Database
 from ..errors import NotFound, ValidationError
+from ..events import bus
 from ..services import auth_service
 from ..services.admin_service import AdminService
 from ..services.recommendation_service import RecommendationService
@@ -33,6 +34,10 @@ class Api:
         self.recommendations = RecommendationService(db, cfg)
         self.stats = StatsService(db)
         self.admin = AdminService(db)
+
+    def authenticate(self, token: str | None) -> dict:
+        """供 SSE 等非标准入口复用令牌校验。"""
+        return auth_service.authenticate(self.db, token, self.cfg)
 
     # ------------------------------------------------------------------ 分发
     def handle(self, method: str, path: str, query: dict, payload: dict, token: str | None = None):
@@ -80,13 +85,17 @@ class Api:
             return 200, {"ok": True, "reservations": self.reservations.list_mine(actor)}
 
         if path == "/api/recommendations":
-            items = self.recommendations.recommend(
+            result = self.recommendations.recommend(
                 actor["id"],
                 _q(query, "date", datetime.now().date().isoformat()),
                 _q(query, "start", "09:00"),
                 _q(query, "end", "11:00"),
             )
-            return 200, {"ok": True, "recommendations": items}
+            return 200, {
+                "ok": True,
+                "recommendations": result["items"],
+                "context": result["context"],
+            }
 
         if path == "/api/admin/stats":
             auth_service.require_admin(actor)
@@ -123,33 +132,45 @@ class Api:
                 payload["start_time"],
                 payload["end_time"],
             )
+            bus.publish("reservation.created", {
+                "seat_id": reservation["seat_id"],
+                "date": reservation["reservation_date"],
+                "start": reservation["start_time"],
+                "end": reservation["end_time"],
+            })
             return 201, {"ok": True, "message": "预约成功", "reservation": reservation}
 
         match = re.fullmatch(r"/api/reservations/(\d+)/checkin", path)
         if match:
             result = self.reservations.checkin(int(match.group(1)), actor)
+            bus.publish("reservation.checked_in", {"reservation_id": int(match.group(1))})
             return 200, {"ok": True, **result}
 
         match = re.fullmatch(r"/api/reservations/(\d+)/checkout", path)
         if match:
             result = self.reservations.checkout(int(match.group(1)), actor)
+            bus.publish("reservation.checked_out", {"reservation_id": int(match.group(1))})
             return 200, {"ok": True, **result}
 
         match = re.fullmatch(r"/api/admin/seats/(\d+)/status", path)
         if match:
             auth_service.require_admin(actor)
             seat = self.admin.set_seat_status(int(match.group(1)), payload.get("status"))
+            bus.publish("seat.status", {"seat_id": seat["id"], "status": seat["status"]})
             return 200, {"ok": True, "message": "座位状态已更新", "seat": seat}
 
         match = re.fullmatch(r"/api/admin/violations/(\d+)/resolve", path)
         if match:
             auth_service.require_admin(actor)
-            return 200, {"ok": True, "message": self.violations.resolve(int(match.group(1)))}
+            message = self.violations.resolve(int(match.group(1)))
+            bus.publish("violation.resolved", {"violation_id": int(match.group(1))})
+            return 200, {"ok": True, "message": message}
 
         # 演示 / 巡检用：手动触发一次违规扫描
         if path == "/api/admin/violations/scan":
             auth_service.require_admin(actor)
             summary = self.violations.scan()
+            bus.publish("violation.scanned", {"summary": summary})
             return 200, {"ok": True, "message": "扫描完成", "summary": summary}
 
         raise NotFound("接口不存在")
@@ -160,4 +181,5 @@ class Api:
         if not match:
             raise NotFound("接口不存在")
         message = self.reservations.cancel(int(match.group(1)), actor)
+        bus.publish("reservation.cancelled", {"reservation_id": int(match.group(1))})
         return 200, {"ok": True, "message": message}

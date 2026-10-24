@@ -2,6 +2,7 @@
 import { api } from '../api.js';
 import { $, esc, fillTimeSelect, loading, toast, todayISO } from '../ui.js';
 import { state } from '../store.js';
+import { subscribe } from '../realtime.js';
 
 let refs = null;
 
@@ -40,6 +41,14 @@ export function init() {
 
   refs.modal.addEventListener('click', (event) => {
     if (event.target.matches('[data-close], .modal')) refs.modal.classList.add('hidden');
+  });
+
+  // 别人下单 / 取消 / 座位维护后，当前页自动刷新
+  let timer = null;
+  subscribe(() => {
+    if ($('#page-booking')?.classList.contains('hidden')) return;
+    clearTimeout(timer);
+    timer = setTimeout(refresh, 500);
   });
 }
 

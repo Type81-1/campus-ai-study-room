@@ -17,8 +17,10 @@ from .web import make_server
 
 def bootstrap(cfg=config):
     """返回 (database, api)：初始化库结构并装配服务，供启动脚本与测试复用。"""
+    from .events import bus
     from .services.auth_service import migrate_plaintext_passwords
 
+    bus.max_subscribers = cfg.sse_max_clients
     db = Database(cfg)
     db.initialize()
     # 存量明文口令一次性升级为 PBKDF2 哈希

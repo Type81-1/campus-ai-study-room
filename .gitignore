@@ -25,3 +25,7 @@ venv/
 *.db
 *.sqlite
 coverage/
+
+# 前端测试运行产物（保留 baseline）
+frontend/tests/screenshots/*.png
+frontend/tests/screenshots/*.diff.png
