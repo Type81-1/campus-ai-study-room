@@ -4,6 +4,8 @@
 
 覆盖座位预约、时段锁定、违规占座预警、空闲座位智能推荐、签到核销、后台权限管理与预约数据统计，采用**分层架构 + MySQL + 令牌鉴权** 实现，并配有单元测试、集成测试、并发压力测试与前端无头冒烟测试。
 
+> **想先跑起来？** 直接跳到 [快速开始](#快速开始)：SQLite 模式一条命令即可，无需安装数据库。
+
 ---
 
 ## 本版（v2.2）主要改动
@@ -52,30 +54,47 @@
 
 ## 快速开始
 
-### 方式一：SQLite（零依赖，最快跑通）
+三步：**起库 → 起服务 → 灌演示数据**。SQLite 模式零依赖，不需要 Docker、不需要装数据库。
 
-```powershell
+### 0. 前置条件
+
+- Python 3.10 及以上（能执行 `python --version` 即可）
+- 仅 MySQL 模式需要驱动：`pip install -r backend/requirements.txt`
+- 下面所有命令都在项目根目录（本 README 所在目录）执行
+
+### 方式 A：SQLite（零依赖，最快跑通）
+
+```
 python backend/server.py
 ```
 
-打开 <http://127.0.0.1:8000>，首次启动自动建库到 `backend/data/study_room.db` 并写入演示数据。
+**预期输出**（首次启动会自动建库 `backend/data/study_room.db`，并写入 24 个座位、3 个账号）：
 
-### 方式二：MySQL（验收推荐）
-
-1）起一个 MySQL（有 Docker 时一条命令，脚本会自动建表）：
-
-```powershell
-docker compose up -d
+```text
+校园 AI 智能自习室预约系统已启动
+  访问地址：http://127.0.0.1:8000
+  数据库：sqlite://...\backend\data\study_room.db（sqlite）
+  签到窗口：开始前 30 分钟起可签到，令牌有效期 7 天
+  违规规则：超时未签到 15 分钟 / 超时占用 30 分钟 / 累计 3 条限制预约
 ```
 
-没有 Docker，用本机 MySQL 也行：
+**这个窗口不要关**，它就是服务进程。浏览器打开 <http://127.0.0.1:8000> 应该看到登录页；
+用 `student001 / 123456` 登录后进入预约页，右上角显示绿色「实时」，座位区有 24 张卡片。
 
-```powershell
+### 方式 B：MySQL（验收 / 演示推荐）
+
+**第一步，起数据库**（二选一）：
+
+```
+# 有 Docker：一条命令，容器首次启动自动建表
+docker compose up -d
+
+# 没有 Docker：装驱动 + 初始化本机 MySQL
 pip install -r backend/requirements.txt
 python scripts/init_mysql.py --host 127.0.0.1 --user root --password 你的密码
 ```
 
-2）带环境变量启动后端：
+**第二步，带环境变量起服务**：
 
 ```powershell
 $env:DB_BACKEND="mysql"
@@ -86,15 +105,79 @@ $env:MYSQL_DATABASE="campus_study_room"
 python backend/server.py
 ```
 
+> 上面按 Windows PowerShell 写。CMD 用 `set X=Y`，macOS / Linux 用 `export X=Y`，变量名相同。
+> 只想跑 SQLite 就跳过这些变量，直接 `python backend/server.py`。
+
+**预期差异**：启动横幅的「数据库」一行变成 `mysql://root@127.0.0.1:3306/campus_study_room（mysql）`（端口按你的 `MYSQL_PORT` 显示），
+其余与 SQLite 模式一致。任何时候都能确认当前用的是哪个库：
+
+```
+curl http://127.0.0.1:8000/api/health
+```
+
+```json
+{"ok": true, "service": "study-room", "version": "2.2",
+ "database": {"backend": "mysql", "database": "mysql://root@127.0.0.1:3306/campus_study_room"}}
+```
+
 > 完整可配置项见 `.env.example`。不指定 `DB_BACKEND` 时：配了 `MYSQL_HOST` 就走 MySQL，否则走 SQLite。
+
+### 第三步：灌演示数据（建议做，演示更直观）
+
+服务保持运行，**另开一个终端窗口**，在项目根目录执行：
+
+```
+python scripts/seed_demo.py --skip-scan
+```
+
+**预期输出**：
+
+```text
+student001 预约 1 号座位：HTTP 201
+student001 预约 5 号座位：HTTP 201
+student001 预约 9 号座位：HTTP 201
+student002 预约 2 号座位：HTTP 201
+student002 预约今天的早场：HTTP 201
+已跳过自动扫描：请在管理看板点「立即扫描超时预约」，违规预警会出现 1 条
+```
+
+它造了 4 条明天的预约（1F-01、1F-05、1F-09、1F-02）和 1 条今天凌晨的预约。
+`--skip-scan` 表示先不扫描，把「扫描出 1 条违规」留给管理端手动点，
+现场能看到「开放预警 0 → 1、失约率 0% → 20%（1/5）」的变化；不加这个参数则脚本自己扫一遍。
 
 ### 演示账号
 
-| 类型 | 账号 | 密码 |
+| 类型 | 账号 | 密码 | 登录后看到 |
+| --- | --- | --- | --- |
+| 学生 | `student001` | `123456` | 预约座位 / 我的预约 / 智能推荐 |
+| 学生 | `student002` | `123456` | 同上（用于演示他人预约与违规） |
+| 管理员 | `admin` | `admin123` | 管理看板（概览 / 违规预警 / 座位管理 / 用户概览） |
+
+### 验收清单（跑完对照这五项）
+
+| 检查项 | 怎么查 | 预期 |
 | --- | --- | --- |
-| 学生 | `student001` | `123456` |
-| 学生 | `student002` | `123456` |
-| 管理员 | `admin` | `admin123` |
+| 服务起来了 | 启动窗口有「已启动」横幅 | 打印访问地址与当前数据库 |
+| 页面能打开 | 浏览器访问 `http://127.0.0.1:8000` | 登录页 + 演示账号提示 |
+| 接口正常 | `curl http://127.0.0.1:8000/api/health` | `{"ok": true, ...}`，`backend` 与所选模式一致 |
+| 功能可用 | 用 `student001` 登录 | 24 张座位卡、右上角「实时」、可下单 |
+| 用例全绿 | `python -m unittest discover -s tests -t .` | `Ran 130 tests` + `OK` |
+
+### 停止服务
+
+- 服务：在启动窗口按 `Ctrl + C`
+- MySQL（Docker）：`docker compose down`
+- MySQL（本机）：`mysqladmin -u root -p shutdown`，或在 Windows 服务里停止对应服务
+
+### 常见问题
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| 端口被占（`Address already in use`） | 8000 已被别的进程占用 | 换端口：`$env:PORT="8020"`（CMD 用 `set PORT=8020`）后重启，浏览器地址同步改 |
+| `No module named 'pymysql'` | 当前 Python 没装驱动（多 Python 环境常见） | `python -m pip install -r backend/requirements.txt`；先用 `python -c "import sys; print(sys.executable)"` 确认解释器 |
+| `Can't connect to MySQL server` | 数据库没起，或端口 / 密码不对 | `docker compose up -d` 或启动本机 MySQL；核对 `MYSQL_PORT`、`MYSQL_PASSWORD` |
+| 页面空白或样式丢失 | 浏览器缓存了旧脚本 | `Ctrl + F5` 强制刷新 |
+| 演示数据想重来 | 重复灌数据会撞时段冲突 | SQLite：删 `backend/data/study_room.db` 后重启；MySQL：`docker compose down -v` 再 `up -d` |
 
 ---
 
