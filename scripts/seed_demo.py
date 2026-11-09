@@ -3,6 +3,7 @@
 用法（先启动后端）：
     python scripts/seed_demo.py
     python scripts/seed_demo.py http://127.0.0.1:8000
+    python scripts/seed_demo.py --skip-scan     # 不自动扫描，留给管理端现场点「立即扫描」
 """
 from __future__ import annotations
 
@@ -12,7 +13,9 @@ import urllib.error
 import urllib.request
 from datetime import date, timedelta
 
-BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
+args = [item for item in sys.argv[1:] if not item.startswith("--")]
+SKIP_SCAN = "--skip-scan" in sys.argv
+BASE = args[0] if args else "http://127.0.0.1:8000"
 
 
 def call(method, path, payload=None, token=None):
@@ -58,6 +61,10 @@ def main() -> int:
         "seat_id": 7, "reservation_date": date.today().isoformat(),
         "start_time": "00:00", "end_time": "02:00"}, student2)
     print(f"student002 预约今天的早场：HTTP {status}")
+
+    if SKIP_SCAN:
+        print("已跳过自动扫描：请在管理看板点「立即扫描超时预约」，违规预警会出现 1 条")
+        return 0
 
     status, body = call("POST", "/api/admin/violations/scan", {}, admin)
     print(f"触发违规扫描：HTTP {status} {body.get('summary')}")

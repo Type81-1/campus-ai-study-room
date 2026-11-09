@@ -30,7 +30,10 @@ export function init() {
 
   refs.refresh.addEventListener('click', refresh);
   refs.date.addEventListener('change', refresh);
-  refs.start.addEventListener('change', refresh);
+  refs.start.addEventListener('change', () => {
+    alignEnd();
+    refresh();
+  });
   refs.end.addEventListener('change', refresh);
   refs.confirm.addEventListener('click', submit);
 
@@ -50,6 +53,18 @@ export function init() {
     clearTimeout(timer);
     timer = setTimeout(refresh, 500);
   });
+}
+
+/** 开始时间被调到结束时间之后时，把结束时间顺延到「开始 + 2 小时」。
+ *  否则每次改开始时间都会先弹一条「结束时间必须晚于开始时间」，看着像出错。 */
+function alignEnd() {
+  if (refs.end.value > refs.start.value) return;
+  const values = Array.from(refs.end.options).map((option) => option.value);
+  if (!values.length) return;
+  const [hour, minute] = refs.start.value.split(':').map(Number);
+  const target = new Date(2000, 0, 1, hour, minute + 120);
+  const wanted = `${String(target.getHours()).padStart(2, '0')}:${String(target.getMinutes()).padStart(2, '0')}`;
+  refs.end.value = values.includes(wanted) ? wanted : values[values.length - 1];
 }
 
 export async function refresh() {

@@ -112,6 +112,8 @@ def ensure_seats(db, count: int) -> int:
 
 def run_parallel(host: str, port: int, tasks):
     """tasks: [(token, method, path, payload)] → ([(status, elapsed_ms, data)], wall_seconds)"""
+    if not tasks:  # --reads 0 时没有任务，Barrier(0) 会直接报错
+        return [], 0.0
     barrier = threading.Barrier(len(tasks))
     results: list[tuple[int, float, dict]] = []
     lock = threading.Lock()
